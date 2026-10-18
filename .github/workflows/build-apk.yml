@@ -40,11 +40,11 @@ jobs:
           mkdir -v -p build
           EXPORT_DIR="$(readlink -f build)"
           cd project
-          godot --headless --verbose --export-debug "Android" "$EXPORT_DIR/ArcanaRun.apk"
+          godot --headless --verbose --export-debug "Android" "$EXPORT_DIR/ZeroSum.apk"
           ls -la "$EXPORT_DIR"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Arcana-Run-APK
-          path: build/ArcanaRun.apk
+          name: Zero-Sum-APK
+          path: build/ZeroSum.apk
