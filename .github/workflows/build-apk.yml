@@ -1,0 +1,50 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: "4.3"
+
+jobs:
+  android:
+    name: Android Export
+    runs-on: ubuntu-24.04
+    container:
+      image: barichello/godot-ci:4.3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Unpack project
+        run: |
+          rm -rf project && mkdir project
+          unzip -q projeto.zip -d project
+
+      - name: Setup Godot templates and editor settings
+        run: |
+          mkdir -v -p ~/.local/share/godot/export_templates/
+          mkdir -v -p ~/.config/
+          mv /root/.config/godot ~/.config/godot || true
+          mv /root/.local/share/godot/export_templates/${GODOT_VERSION}.stable ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable || true
+
+      - name: Import project (first pass)
+        run: |
+          cd project
+          godot --headless --import --quit || true
+
+      - name: Export debug APK
+        run: |
+          mkdir -v -p build
+          EXPORT_DIR="$(readlink -f build)"
+          cd project
+          godot --headless --verbose --export-debug "Android" "$EXPORT_DIR/ArcanaRun.apk"
+          ls -la "$EXPORT_DIR"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arcana-Run-APK
+          path: build/ArcanaRun.apk
