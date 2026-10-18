@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 env:
   GODOT_VERSION: "4.3"
 
@@ -48,3 +51,23 @@ jobs:
         with:
           name: Zero-Sum-APK
           path: build/ZeroSum.apk
+
+      # The game checks the latest release on start-up and offers the update in the main menu.
+      - name: Read version
+        id: ver
+        run: |
+          NAME=$(sed -n 's/^version\/name="\(.*\)"$/\1/p' project/export_presets.cfg | head -n 1)
+          CODE=$(sed -n 's/^version\/code=\([0-9]*\)$/\1/p' project/export_presets.cfg | head -n 1)
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          { echo "code=$CODE"; echo ""; cat project/notas_versao.txt 2>/dev/null || true; } > build/release_body.md
+          cat build/release_body.md
+
+      - name: Publish release for in-game updates
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.name }}-b${{ github.run_number }}
+          name: Zero-Sum ${{ steps.ver.outputs.name }}
+          body_path: build/release_body.md
+          files: build/ZeroSum.apk
+          make_latest: true
