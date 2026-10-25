@@ -21,10 +21,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The browser upload takes at most 10 MB per file, so the card illustrations travel in
+      # extra packs (arte_*.zip). They are unpacked first and projeto.zip goes on top, so a
+      # file inside projeto.zip always wins over an older copy in a pack.
       - name: Unpack project
         run: |
           rm -rf project && mkdir project
-          unzip -q projeto.zip -d project
+          for z in arte_*.zip; do
+            if [ -f "$z" ]; then unzip -q -o "$z" -d project; fi
+          done
+          unzip -q -o projeto.zip -d project
+          echo "Files in project: $(find project -type f | wc -l)"
 
       - name: Setup Godot templates and editor settings
         run: |
