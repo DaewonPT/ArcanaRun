@@ -53,22 +53,30 @@ jobs:
           godot --headless --verbose --export-debug "Android" "$EXPORT_DIR/ZeroSum.apk"
           ls -la "$EXPORT_DIR"
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Zero-Sum-APK
-          path: build/ZeroSum.apk
-
       # The game checks the latest release on start-up and offers the update in the main menu.
+      # Since 0.17.0 the APK carries the version in its name (ZeroSum_v0.17.0.apk), so every download
+      # is easy to tell apart on the phone. Installed apps (0.9.0 and later) accept any .apk asset
+      # from this repository (AppUpdate.gd), so the new name does not break their update button.
       - name: Read version
         id: ver
         run: |
           NAME=$(sed -n 's/^version\/name="\(.*\)"$/\1/p' project/export_presets.cfg | head -n 1)
           CODE=$(sed -n 's/^version\/code=\([0-9]*\)$/\1/p' project/export_presets.cfg | head -n 1)
+          if [ -z "$NAME" ] || [ -z "$CODE" ]; then echo "version/name or version/code missing in export_presets.cfg"; exit 1; fi
+          APK="ZeroSum_v$NAME.apk"
+          mv build/ZeroSum.apk "build/$APK"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "apk=$APK" >> "$GITHUB_OUTPUT"
           { echo "code=$CODE"; echo ""; cat project/notas_versao.txt 2>/dev/null || true; } > build/release_body.md
+          ls -la build
           cat build/release_body.md
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zero-Sum-APK
+          path: build/${{ steps.ver.outputs.apk }}
 
       - name: Publish release for in-game updates
         uses: softprops/action-gh-release@v2
@@ -76,7 +84,7 @@ jobs:
           tag_name: v${{ steps.ver.outputs.name }}-b${{ github.run_number }}
           name: Zero-Sum ${{ steps.ver.outputs.name }}
           body_path: build/release_body.md
-          files: build/ZeroSum.apk
+          files: build/${{ steps.ver.outputs.apk }}
           make_latest: true
 
       # Test APK for the emulator job: never attached to the release, never blocks it.
