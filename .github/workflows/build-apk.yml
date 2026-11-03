@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish a release (untick to only build and run the emulator test)"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -79,6 +84,7 @@ jobs:
           path: build/${{ steps.ver.outputs.apk }}
 
       - name: Publish release for in-game updates
+        if: github.event_name == 'push' || inputs.release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.ver.outputs.name }}-b${{ github.run_number }}
@@ -144,15 +150,24 @@ jobs:
           # 0.19.0 (251): performance test - a full battle measures the FPS while idle and during the attack.
           # 0.19.0 (253): the emulator has 3 GB of RAM, like a weak phone; the memory goes into the report.
           adb shell am force-stop pt.zerosum.game
-          adb shell run-as pt.zerosum.game sh -c 'mkdir -p files && echo 1 > files/perf_test.flag' || echo "run-as failed"
+          # adb shell joins its arguments into one command line, so the inner command goes in one quoted string.
+          adb shell run-as pt.zerosum.game mkdir -p files || true
+          adb shell "run-as pt.zerosum.game sh -c 'echo 1 > files/perf_test.flag'" || true
+          if adb shell run-as pt.zerosum.game ls files 2>/dev/null | grep -q perf_test.flag; then echo "Performance flag written"; else echo "::warning::Could not write the performance flag (run-as)"; fi
           adb logcat -c
           adb shell monkey -p pt.zerosum.game -c android.intent.category.LAUNCHER 1
-          sleep 75
+          PERF=""
+          for i in $(seq 1 36); do
+            sleep 5
+            PERF=$(adb logcat -d | grep -o "ZS_PERF.*" | tail -1)
+            if [ -n "$PERF" ]; then echo "Performance result after $((i * 5)) s"; break; fi
+          done
           adb exec-out screencap -p > screen_battle.png
           adb logcat -d > logcat_perf.txt
+          grep -iE "godot|FATAL|AndroidRuntime" logcat_perf.txt > logcat_perf_godot.txt || true
+          if grep -qE "FATAL EXCEPTION|SCRIPT ERROR" logcat_perf.txt; then echo "::warning::Errors in the log during the performance test"; grep -E "FATAL EXCEPTION|SCRIPT ERROR" -A3 logcat_perf.txt | head -40; fi
           adb shell dumpsys meminfo pt.zerosum.game > meminfo.txt || true
           grep -E "TOTAL|Graphics|Native Heap" meminfo.txt | head -10 || true
-          PERF=$(grep -o "ZS_PERF.*" logcat_perf.txt | tail -1)
           echo "$PERF" > perf.txt
           if [ -z "$PERF" ]; then echo "::warning::Performance test did not report (ZS_PERF missing)"; exit 0; fi
           echo "$PERF"
@@ -181,6 +196,7 @@ jobs:
             screen_menu.png
             screen_battle.png
             logcat_godot.txt
+            logcat_perf_godot.txt
             perf.txt
             meminfo.txt
           retention-days: 7
