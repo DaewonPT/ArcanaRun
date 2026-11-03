@@ -141,6 +141,23 @@ jobs:
           if [ -z "$PID" ]; then echo "A app fechou-se sozinha"; tail -60 logcat_godot.txt; exit 1; fi
           if grep -qE "FATAL EXCEPTION|SCRIPT ERROR|Parse Error" logcat.txt; then echo "Erros no logcat"; grep -E "FATAL EXCEPTION|SCRIPT ERROR|Parse Error" -A3 logcat.txt | head -60; exit 1; fi
           echo "OK: o jogo abriu e continua a correr (pid $PID)"
+          # 0.19.0 (251): performance test - a full battle measures the FPS while idle and during the attack.
+          # 0.19.0 (253): the emulator has 3 GB of RAM, like a weak phone; the memory goes into the report.
+          adb shell am force-stop pt.zerosum.game
+          adb shell run-as pt.zerosum.game sh -c 'mkdir -p files && echo 1 > files/perf_test.flag' || echo "run-as failed"
+          adb logcat -c
+          adb shell monkey -p pt.zerosum.game -c android.intent.category.LAUNCHER 1
+          sleep 75
+          adb exec-out screencap -p > screen_battle.png
+          adb logcat -d > logcat_perf.txt
+          adb shell dumpsys meminfo pt.zerosum.game > meminfo.txt || true
+          grep -E "TOTAL|Graphics|Native Heap" meminfo.txt | head -10 || true
+          PERF=$(grep -o "ZS_PERF.*" logcat_perf.txt | tail -1)
+          echo "$PERF" > perf.txt
+          if [ -z "$PERF" ]; then echo "::warning::Performance test did not report (ZS_PERF missing)"; exit 0; fi
+          echo "$PERF"
+          ATTACK=$(echo "$PERF" | sed -n 's/.*attack_fps=\([0-9.]*\).*/\1/p')
+          if [ -n "$ATTACK" ] && awk "BEGIN{exit !($ATTACK < 15)}"; then echo "::warning::FPS during the attack dropped to $ATTACK (software GPU in the emulator; compare with the previous build)"; fi
           SH
           chmod +x check.sh
 
@@ -152,6 +169,7 @@ jobs:
           target: google_apis
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
+          ram-size: 3072M
           script: ./check.sh
 
       - name: Upload screenshot and logcat
@@ -161,5 +179,8 @@ jobs:
           name: Emulator-Report
           path: |
             screen_menu.png
+            screen_battle.png
             logcat_godot.txt
+            perf.txt
+            meminfo.txt
           retention-days: 7
